@@ -26,9 +26,12 @@ foreach ($app in $appRegistrations.value) {
     foreach ($secret in $app.passwordCredentials) {
         if ($secret.endDateTime -lt $expiryThreshold) {
             $expiringApps += [PSCustomObject]@{
+                AppId = $app.appId
                 AppName = $app.displayName
-                CredentialTpye = "Secret"
+                CredentialType = "Client Secret"
                 EndDateTime = $secret.endDateTime
+                DaysUntilExpiry = [math]::Round(($secret.endDateTime - (Get-Date)).TotalDays, 1)
+                KeyId = $secret.keyId
             }
         }
     } 
@@ -37,9 +40,13 @@ foreach ($app in $appRegistrations.value) {
     foreach ($cert in $app.keyCredentials) {
         if ($cert.endDateTime -lt $expiryThreshold) {
             $expiringApps += [PSCustomObject]@{
+                AppId = $app.appId
                 AppName = $app.displayName
-                CredentialTpye = "Certificate"
+                CredentialType = "Certificate"
                 EndDateTime = $cert.endDateTime
+                DaysUntilExpiry = [math]::Round(($cert.endDateTime - (Get-Date)).TotalDays, 1)
+                KeyId = $cert.keyId
+                # Thumbprint = $cert.thumbprint ## ToDO
             }
         }
     } # End of passwordCredentials loop
