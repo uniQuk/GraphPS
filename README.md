@@ -10,7 +10,5 @@ These scripts assume the user is already connected to graph with the correct sco
 - Users should fully understand the code within the scripts before running them
 - The scripts are not meant to be run in a production environment without testing
 
-
-
 ## To-Do
 - Provide more context of each script
