@@ -183,8 +183,16 @@ if ($selectedItem.Category -eq "Active") {
             $activeRole = $activeRoles | Where-Object { $_.roleDefinition.id -eq $selectedItem.RoleDefinitionId } | Select-Object -First 1
             if ($activeRole) {
                 $cancelUri = "https://graph.microsoft.com/beta/roleManagement/directory/assignmentScheduleInstances/$($activeRole.id)/cancel"
-                Invoke-MgGraphRequest -Method POST -Uri $cancelUri -Body (@{ justification = "Deactivation via script" } | ConvertTo-Json)
-                Write-Host "Deactivation request submitted."
+                try {
+                    Invoke-MgGraphRequest -Method POST -Uri $cancelUri -Body (@{ justification = "Deactivation via script" } | ConvertTo-Json)
+                    Write-Host "Deactivation request submitted."
+                } catch {
+                    if ($_.Exception.Message -match "ActiveDurationTooShort") {
+                        Write-Host "Error: The active duration is too short. Please wait at least 5 minutes before deactivation."
+                    } else {
+                        Write-Host "An error occurred during deactivation: $($_.Exception.Message)"
+                    }
+                }
             } else {
                 Write-Host "Active role assignment not found."
             }
@@ -200,8 +208,16 @@ if ($selectedItem.Category -eq "Active") {
                 justification = "Deactivation via script"
             }
             $deactivationUri = "https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/assignmentScheduleRequests"
-            Invoke-MgGraphRequest -Method POST -Uri $deactivationUri -Body ($deactivationBody | ConvertTo-Json -Depth 10)
-            Write-Host "Deactivation request submitted."
+            try {
+                Invoke-MgGraphRequest -Method POST -Uri $deactivationUri -Body ($deactivationBody | ConvertTo-Json -Depth 10)
+                Write-Host "Deactivation request submitted."
+            } catch {
+                if ($_.Exception.Message -match "ActiveDurationTooShort") {
+                    Write-Host "Error: The active duration is too short for deactivation. Please wait at least 5 minutes before deactivation."
+                } else {
+                    Write-Host "An error occurred during deactivation: $($_.Exception.Message)"
+                }
+            }
         }
     }
     elseif ($action -eq "2") {
@@ -218,8 +234,16 @@ if ($selectedItem.Category -eq "Active") {
                     justification = "Extension via script"
                     scheduleInfo  = @{ expiration = @{ duration = "PT$($duration)H" } }
                 }
-                Invoke-MgGraphRequest -Method POST -Uri $extendUri -Body ($extendBody | ConvertTo-Json -Depth 10)
-                Write-Host "Extension request submitted."
+                try {
+                    Invoke-MgGraphRequest -Method POST -Uri $extendUri -Body ($extendBody | ConvertTo-Json -Depth 10)
+                    Write-Host "Extension request submitted."
+                } catch {
+                    if ($_.Exception.Message -match "ActiveDurationTooShort") {
+                        Write-Host "Error: The active duration is too short for extension. Please wait at least 5 minutes before extending the assignment."
+                    } else {
+                        Write-Host "An error occurred during extension: $($_.Exception.Message)"
+                    }
+                }
             } else {
                 Write-Host "Active role assignment not found."
             }
@@ -239,8 +263,16 @@ if ($selectedItem.Category -eq "Active") {
                     accessId         = "member"  # Adjust if necessary
                 }
                 $extendUri = "https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/assignmentScheduleRequests"
-                Invoke-MgGraphRequest -Method POST -Uri $extendUri -Body ($extendBody | ConvertTo-Json -Depth 10)
-                Write-Host "Extension request submitted."
+                try {
+                    Invoke-MgGraphRequest -Method POST -Uri $extendUri -Body ($extendBody | ConvertTo-Json -Depth 10)
+                    Write-Host "Extension request submitted."
+                } catch {
+                    if ($_.Exception.Message -match "ActiveDurationTooShort") {
+                        Write-Host "Error: The active duration is too short for extension. Please wait at least 5 minutes before extending the assignment."
+                    } else {
+                        Write-Host "An error occurred during extension: $($_.Exception.Message)"
+                    }
+                }
             } else {
                 Write-Host "Active group assignment not found."
             }
@@ -268,8 +300,16 @@ else {
         }
         $activationUri = "https://graph.microsoft.com/beta/roleManagement/directory/assignmentScheduleRequests"
         Write-Host "Activating role..."
-        Invoke-MgGraphRequest -Method POST -Uri $activationUri -Body ($activationBody | ConvertTo-Json -Depth 10)
-        Write-Host "Activation request submitted."
+        try {
+            Invoke-MgGraphRequest -Method POST -Uri $activationUri -Body ($activationBody | ConvertTo-Json -Depth 10)
+            Write-Host "Activation request submitted."
+        } catch {
+            if ($_.Exception.Message -match "ActiveDurationTooShort") {
+                Write-Host "Error: The activation duration is too short. Please specify a duration of at least 5 minutes."
+            } else {
+                Write-Host "An error occurred during activation: $($_.Exception.Message)"
+            }
+        }
     }
     elseif ($selectedItem.Type -eq "Group") {
         $activationBody = @{
@@ -283,7 +323,15 @@ else {
         }
         $activationUri = "https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/assignmentScheduleRequests"
         Write-Host "Activating group..."
-        Invoke-MgGraphRequest -Method POST -Uri $activationUri -Body ($activationBody | ConvertTo-Json -Depth 10)
-        Write-Host "Activation request submitted."
+        try {
+            Invoke-MgGraphRequest -Method POST -Uri $activationUri -Body ($activationBody | ConvertTo-Json -Depth 10)
+            Write-Host "Activation request submitted."
+        } catch {
+            if ($_.Exception.Message -match "ActiveDurationTooShort") {
+                Write-Host "Error: The activation duration is too short. Please specify a duration of at least 5 minutes."
+            } else {
+                Write-Host "An error occurred during activation: $($_.Exception.Message)"
+            }
+        }
     }
 }
