@@ -22,4 +22,5 @@ WIP/**
 
 # General dot files
 .*
-!.gitignore
+.gitignore
+Testing/
