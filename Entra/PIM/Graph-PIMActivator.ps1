@@ -44,7 +44,7 @@ function Get-ErrorDetails {
 }
 
 # Check if an assignment is locked (activated less than 5 minutes ago).
-function Is-Locked {
+function Test-AssignmentLock {
     param ($item)
     $baseTime = if ($item.PSObject.Properties['createdDateTime']) { 
                     [datetime]$item.createdDateTime 
@@ -81,7 +81,7 @@ function Wait-ForDeactivation {
 }
 
 # Validate payload with reprompt logic.
-function Validate-Payload {
+function Test-Payload {
     param (
         [hashtable]$Payload,
         [string]$Endpoint,
@@ -120,7 +120,7 @@ function Validate-Payload {
 }
 
 # Process an assignment into a uniform object.
-function Process-Assignment {
+function ConvertTo-AssignmentObject {
     param (
         [object]$Assignment,
         [string]$Type,   # "Role" or "Group"
@@ -142,7 +142,7 @@ function Process-Assignment {
         Raw              = $Assignment
         Locked           = $false
     }
-    if ($State -eq "Active") { $obj.Locked = Is-Locked $Assignment }
+    if ($State -eq "Active") { $obj.Locked = Test-AssignmentLock $Assignment }
     return $obj
 }
 
@@ -163,10 +163,10 @@ $activeGroups   = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsof
 $eligibleGroups = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/eligibilitySchedules/filterByCurrentUser(on='principal')"
 
 # Process assignments.
-$processedActiveRoles    = $activeRoles.value   | ForEach-Object { Process-Assignment -Assignment $_ -Type "Role" -State "Active" } | Where-Object { $_ }
-$processedActiveGroups   = $activeGroups.value    | ForEach-Object { Process-Assignment -Assignment $_ -Type "Group" -State "Active" } | Where-Object { $_ }
-$processedEligibleRoles  = $eligibleRoles.value   | ForEach-Object { Process-Assignment -Assignment $_ -Type "Role" -State "Eligible" } | Where-Object { $_ }
-$processedEligibleGroups = $eligibleGroups.value  | ForEach-Object { Process-Assignment -Assignment $_ -Type "Group" -State "Eligible" } | Where-Object { $_ }
+$processedActiveRoles    = $activeRoles.value   | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Role" -State "Active" } | Where-Object { $_ }
+$processedActiveGroups   = $activeGroups.value    | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Group" -State "Active" } | Where-Object { $_ }
+$processedEligibleRoles  = $eligibleRoles.value   | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Role" -State "Eligible" } | Where-Object { $_ }
+$processedEligibleGroups = $eligibleGroups.value  | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Group" -State "Eligible" } | Where-Object { $_ }
 
 # Filter out eligible assignments that already have an active counterpart.
 $filteredEligibleRoles = $processedEligibleRoles | Where-Object {
@@ -234,12 +234,12 @@ if ($selectedItem.State -eq "Eligible") {
 elseif ($selectedItem.State -eq "Active") {
     $choice = Read-Host "Assignment is active. Would you like to Extend (E) or Deactivate (D)? (E/D)"
     if ($choice -match "^[Ee]") {
-         if (Is-Locked $selectedItem.Raw) { Write-Host "Cannot extend: Less than 5 minutes since activation." -ForegroundColor Red; exit }
+         if (Test-AssignmentLock $selectedItem.Raw) { Write-Host "Cannot extend: Less than 5 minutes since activation." -ForegroundColor Red; exit }
          $action = "extend"
          Write-Host "Action: Extend active assignment." -ForegroundColor Green
     }
     elseif ($choice -match "^[Dd]") {
-         if (Is-Locked $selectedItem.Raw) { Write-Host "Cannot deactivate: Less than 5 minutes since activation." -ForegroundColor Red; exit }
+         if (Test-AssignmentLock $selectedItem.Raw) { Write-Host "Cannot deactivate: Less than 5 minutes since activation." -ForegroundColor Red; exit }
          $action = "selfDeactivate"
          Write-Host "Action: Deactivate active assignment." -ForegroundColor Green
     }
@@ -365,7 +365,7 @@ if ($action -eq "extend") {
 #-----------------------------------------------------------
 if ($action -in @("selfActivate", "extend")) {
     $payload.isValidationOnly = $true
-    $payload = Validate-Payload -Payload $payload -Endpoint $endpoint
+    $payload = Test-Payload -Payload $payload -Endpoint $endpoint
     $payload.isValidationOnly = $false
 }
 
@@ -374,7 +374,6 @@ if ($action -in @("selfActivate", "extend")) {
 #-----------------------------------------------------------
 $jsonPayload = $payload | ConvertTo-Json -Depth 5
 Write-Host "`nCalling API at $endpoint with action '$action'..." -ForegroundColor Cyan
-Write-Host "Payload: $jsonPayload" -ForegroundColor Cyan
 try {
      $response = Invoke-MgGraphRequest -Method POST -Uri $endpoint -Body $jsonPayload -ContentType "application/json"
      Write-Host "`nResponse:" -ForegroundColor Green
