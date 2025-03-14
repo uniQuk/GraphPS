@@ -1,20 +1,3 @@
-<#PSScriptInfo
-.VERSION 1.0.0
-.GUID a2b49d31-ec1a-43d0-97ef-401a9bed8d16
-.AUTHOR Josh (uniQuk)
-.COMPANYNAME 
-.COPYRIGHT 
-.TAGS Azure Entra PIM PrivilegedIdentityManagement Graph Microsoft365 Security
-.LICENSEURI https://github.com/uniQuk/GraphPS/tree/main?tab=MIT-1-ov-file#MIT-1-ov-file
-.PROJECTURI https://github.com/uniQuk/GraphPS
-.ICONURI 
-.EXTERNALMODULEDEPENDENCIES Microsoft.Graph.Authentication
-.REQUIREDSCRIPTS 
-.EXTERNALSCRIPTDEPENDENCIES 
-.RELEASENOTES
-  v1.0.0 - Initial release of Graph-PIMActivator
-#>
-
 #-----------------------------------------------------------
 # Ensure you're connected to Microsoft Graph with the required scopes.
 # Author: Josh (https://github.com/uniQuk)
