@@ -1,7 +1,149 @@
+<#PSScriptInfo
+.VERSION 1.0.0
+.GUID a2b49d31-ec1a-43d0-97ef-401a9bed8d16
+.AUTHOR Josh (uniQuk)
+.COMPANYNAME 
+.COPYRIGHT 
+.TAGS Azure Entra PIM PrivilegedIdentityManagement Graph Microsoft365 Security
+.LICENSEURI https://github.com/uniQuk/GraphPS/LICENSE
+.PROJECTURI https://github.com/uniQuk/GraphPS
+.ICONURI 
+.EXTERNALMODULEDEPENDENCIES Microsoft.Graph.Authentication
+.REQUIREDSCRIPTS 
+.EXTERNALSCRIPTDEPENDENCIES 
+.RELEASENOTES
+  Initial release of Graph-PIMActivator
+#>
+
 #-----------------------------------------------------------
-# Ensure you’re connected to Microsoft Graph with the required scopes.
+# Ensure you're connected to Microsoft Graph with the required scopes.
 # Author: Josh (https://github.com/uniQuk)
 #-----------------------------------------------------------
+
+<#
+.SYNOPSIS
+    Activates and manages Microsoft Entra Privileged Identity Management (PIM) roles and groups.
+
+.DESCRIPTION
+    This script provides an interactive interface to activate, deactivate, and extend PIM role 
+    and group assignments. It supports both directory roles and privileged access groups.
+
+.NOTES
+    Required Permissions:
+    - PrivilegedEligibilitySchedule.Read.AzureADGroup  : Required to view eligible privileged groups
+    - PrivilegedAssignmentSchedule.ReadWrite.AzureADGroup : Required to activate/deactivate group memberships
+    - RoleEligibilitySchedule.Read.Directory  : Required to view eligible directory roles
+    - RoleAssignmentSchedule.ReadWrite.Directory : Required to activate/deactivate directory roles
+    
+    To connect with these permissions, run:
+    Connect-MgGraph -Scopes "PrivilegedEligibilitySchedule.Read.AzureADGroup","PrivilegedAssignmentSchedule.ReadWrite.AzureADGroup","RoleEligibilitySchedule.Read.Directory","RoleAssignmentSchedule.ReadWrite.Directory"
+
+.EXAMPLE
+    # First connect to Microsoft Graph with required permissions
+    Connect-MgGraph -Scopes "PrivilegedEligibilitySchedule.Read.AzureADGroup","PrivilegedAssignmentSchedule.ReadWrite.AzureADGroup","RoleEligibilitySchedule.Read.Directory","RoleAssignmentSchedule.ReadWrite.Directory"
+    
+    # Run the script
+    .\Graph-PIMActivator.ps1
+#>
+
+#-----------------------------------------------------------
+# Check Connection to Microsoft Graph First
+#-----------------------------------------------------------
+function Test-GraphConnection {
+    [CmdletBinding()]
+    param(
+        [switch]$ShowDetails
+    )
+
+    # This set matches our testing results - the minimum required permissions
+    $requiredScopes = @(
+        # For PIM Group operations
+        "PrivilegedEligibilitySchedule.Read.AzureADGroup",
+        "PrivilegedAssignmentSchedule.ReadWrite.AzureADGroup",
+        
+        # For PIM Role operations
+        "RoleEligibilitySchedule.Read.Directory",
+        "RoleAssignmentSchedule.ReadWrite.Directory"
+    )
+    
+    # Check if connected to Microsoft Graph
+    try {
+        $context = Get-MgContext -ErrorAction Stop
+        if (-not $context) {
+            Write-Host "`n[ERROR] Not connected to Microsoft Graph. Please connect first with:" -ForegroundColor Red
+            Write-Host "Connect-MgGraph -Scopes '$($requiredScopes -join "','")'" -ForegroundColor Yellow
+            return $false
+        }
+    }
+    catch {
+        Write-Host "`n[ERROR] Not connected to Microsoft Graph. Please connect first with:" -ForegroundColor Red
+        Write-Host "Connect-MgGraph -Scopes '$($requiredScopes -join "','")'" -ForegroundColor Yellow
+        return $false
+    }
+
+    # Get current scopes
+    $currentScopes = $context.Scopes
+
+    # Check for required permissions
+    $missingScopes = @()
+    foreach ($scope in $requiredScopes) {
+        if ($currentScopes -notcontains $scope) {
+            $missingScopes += $scope
+        }
+    }
+
+    # Print connection information
+    Write-Host "`n=== Microsoft Graph Connection ===" -ForegroundColor Cyan
+    Write-Host "Connected as: $($context.Account)" -ForegroundColor White
+    Write-Host "Tenant: $($context.TenantId)" -ForegroundColor White
+    
+    if ($ShowDetails) {
+        Write-Host "Environment: $($context.Environment)" -ForegroundColor White
+        Write-Host "App: $($context.AppName) ($($context.ClientId))" -ForegroundColor White
+        Write-Host "Authentication: $($context.AuthType)" -ForegroundColor White
+    }
+
+    # Permission Analysis
+    if ($missingScopes.Count -gt 0) {
+        Write-Host "`n[WARNING] Missing required permissions: " -ForegroundColor Red
+        $missingScopes | ForEach-Object { Write-Host "- $_" -ForegroundColor Red }
+        
+        # Check for alternative permissions that might work
+        $alternatives = @(
+            "Directory.AccessAsUser.All", 
+            "RoleManagement.ReadWrite.Directory",
+            "PrivilegedAccess.ReadWrite.AzureADGroup"
+        )
+        
+        $hasAlternatives = $false
+        foreach ($alt in $alternatives) {
+            if ($currentScopes -contains $alt) {
+                $hasAlternatives = $true
+                break
+            }
+        }
+        
+        if ($hasAlternatives) {
+            Write-Host "`nYou have some alternative permissions that might work." -ForegroundColor Yellow
+            return $true # Continue with warning
+        } else {
+            Write-Host "`nPlease reconnect with all required permissions:" -ForegroundColor Yellow
+            Write-Host "Disconnect-MgGraph" -ForegroundColor Yellow
+            Write-Host "Connect-MgGraph -Scopes '$($requiredScopes -join "','")'" -ForegroundColor Yellow
+            return $false
+        }
+    } else {
+        Write-Host "`n✓ Connected with all required permissions" -ForegroundColor Green
+    }
+    
+    return $true
+}
+
+# Check connection before proceeding - IMPORTANT - Add this BEFORE any API calls
+if (-not (Test-GraphConnection)) {
+    Write-Host "`nExiting script. Please connect with required permissions and try again." -ForegroundColor Red
+    exit
+}
 
 #-----------------------------------------------------------
 # Helper Functions
@@ -163,25 +305,30 @@ $activeGroups   = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsof
 $eligibleGroups = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/eligibilitySchedules/filterByCurrentUser(on='principal')"
 
 # Process assignments.
-$processedActiveRoles    = $activeRoles.value   | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Role" -State "Active" } | Where-Object { $_ }
-$processedActiveGroups   = $activeGroups.value    | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Group" -State "Active" } | Where-Object { $_ }
-$processedEligibleRoles  = $eligibleRoles.value   | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Role" -State "Eligible" } | Where-Object { $_ }
-$processedEligibleGroups = $eligibleGroups.value  | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Group" -State "Eligible" } | Where-Object { $_ }
+$processedActiveRoles    = @($activeRoles.value | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Role" -State "Active" } | Where-Object { $_ })
+$processedActiveGroups   = @($activeGroups.value | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Group" -State "Active" } | Where-Object { $_ })
+$processedEligibleRoles  = @($eligibleRoles.value | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Role" -State "Eligible" } | Where-Object { $_ })
+$processedEligibleGroups = @($eligibleGroups.value | ForEach-Object { ConvertTo-AssignmentObject -Assignment $_ -Type "Group" -State "Eligible" } | Where-Object { $_ })
 
 # Filter out eligible assignments that already have an active counterpart.
-$filteredEligibleRoles = $processedEligibleRoles | Where-Object {
+$filteredEligibleRoles = @($processedEligibleRoles | Where-Object {
     $eligible = $_
-    $activeMatch = $processedActiveRoles | Where-Object { $_.RoleDefinitionId -eq $eligible.RoleDefinitionId }
+    $activeMatch = @($processedActiveRoles | Where-Object { $_.RoleDefinitionId -eq $eligible.RoleDefinitionId })
     ($activeMatch.Count -eq 0)
-}
-$filteredEligibleGroups = $processedEligibleGroups | Where-Object {
-    $eligible = $_
-    $activeMatch = $processedActiveGroups | Where-Object { $_.GroupId -eq $eligible.GroupId }
-    ($activeMatch.Count -eq 0)
-}
+})
 
-# Combine assignments for display.
-$displayItems = $processedActiveRoles + $processedActiveGroups + $filteredEligibleRoles + $filteredEligibleGroups
+$filteredEligibleGroups = @($processedEligibleGroups | Where-Object {
+    $eligible = $_
+    $activeMatch = @($processedActiveGroups | Where-Object { $_.GroupId -eq $eligible.GroupId })
+    ($activeMatch.Count -eq 0)
+})
+
+# Combine assignments for display safely
+$displayItems = @()
+if ($processedActiveRoles.Count -gt 0) { $displayItems += $processedActiveRoles }
+if ($processedActiveGroups.Count -gt 0) { $displayItems += $processedActiveGroups }
+if ($filteredEligibleRoles.Count -gt 0) { $displayItems += $filteredEligibleRoles }
+if ($filteredEligibleGroups.Count -gt 0) { $displayItems += $filteredEligibleGroups }
 
 Write-Host "`n=== All PIM Roles and Groups ===" -ForegroundColor Cyan
 Write-Host "Note: Recently activated roles require a 5-minute waiting period before they can be modified." -ForegroundColor Yellow
