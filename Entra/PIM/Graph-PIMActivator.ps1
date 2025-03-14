@@ -5,14 +5,14 @@
 .COMPANYNAME 
 .COPYRIGHT 
 .TAGS Azure Entra PIM PrivilegedIdentityManagement Graph Microsoft365 Security
-.LICENSEURI https://github.com/uniQuk/GraphPS/LICENSE
+.LICENSEURI https://github.com/uniQuk/GraphPS/tree/main?tab=MIT-1-ov-file#MIT-1-ov-file
 .PROJECTURI https://github.com/uniQuk/GraphPS
 .ICONURI 
 .EXTERNALMODULEDEPENDENCIES Microsoft.Graph.Authentication
 .REQUIREDSCRIPTS 
 .EXTERNALSCRIPTDEPENDENCIES 
 .RELEASENOTES
-  Initial release of Graph-PIMActivator
+  v1.0.0 - Initial release of Graph-PIMActivator
 #>
 
 #-----------------------------------------------------------
