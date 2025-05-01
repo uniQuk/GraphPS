@@ -13,16 +13,20 @@ param (
 # Retrieves role assignments for a specified role definition in Intune.
 function Get-RoleAssignments($roleDefinitionId) {
     try {
+        if (-not $response) {
+            Write-Verbose "No role assignments found for role definition $roleDefinitionId"
+            return @()
+        }
         # Using beta endpoint to get role assignments for specific role definition
         $url = "https://graph.microsoft.com/beta/deviceManagement/roleDefinitions('$roleDefinitionId')/roleAssignments"
         $response = Invoke-MgGraphRequest -uri $url -method Get -OutputType PSObject | Select-Object -ExpandProperty value
         if ($response.Count -eq 0) {
-            Write-Log "No role assignments found for role definition $roleDefinitionId" -Level Warning
+            Write-Output "No role assignments found for role definition $roleDefinitionId" -Level Warning
         }
         return $response
     }
     catch {
-        Write-Log "Error getting role assignments: $_" -Level Error
+        Write-Output "Error getting role assignments: $_" -Level Error
         throw
     }
 } # End of Get-RoleAssignments function
@@ -31,16 +35,22 @@ function Get-RoleAssignments($roleDefinitionId) {
 # Retrieves groups associated with a role assignment.
 function Get-Groups($roleAssignmentId) {
     try {
+        # Check if null or empty
+        if ([string]::IsNullOrEmpty($roleAssignmentId)) {
+            Write-Output "Role assignment ID is null or empty" -Level Warning
+            return $null
+        }
+
         # Get role assignment details including scope tags
         $url = "https://graph.microsoft.com/beta/deviceManagement/roleAssignments('$roleAssignmentId')?$expand=microsoft.graph.deviceAndAppManagementRoleAssignment/roleScopeTags"
         $response = Invoke-MgGraphRequest -uri $url -method Get -OutputType PSObject | Select-Object -ExpandProperty members
         if ($response.Count -eq 0) {
-            Write-Log "No groups found for role assignment $roleAssignmentId" -Level Warning
+            Write-Output "No groups found for role assignment $roleAssignmentId" -Level Warning
         }
         return $response
     }
     catch {
-        Write-Log "Error getting groups: $_" -Level Error
+        Write-Output "Error getting groups: $_" -Level Error
         throw
     }
 } # End of Get-Groups function
@@ -59,7 +69,7 @@ function Get-GroupDetails($groupId) {
         return $groupDetails, $groupMembers
     }
     catch {
-        Write-Log "Error getting group details: $_" -Level Error
+        Write-Output "Error getting group details: $_" -Level Error
         throw
     }
 } # End of Get-GroupDetails function
@@ -74,12 +84,18 @@ function Process-RoleDefinition($roleDefinition) {
     
     if ($roleAssignments) {
         foreach ($roleAssignment in $roleAssignments) {
+            if ([string]::IsNullOrEmpty($roleAssignment.displayName)) {
+                Write-Verbose "Skipping role assignment with null or empty displayName (ID: $($roleAssignment.id))"
+                continue
+            }
+
+            Write-Verbose "Processing role assignment: $($roleAssignment.displayName)"
             $roleEntry.Assignments[$roleAssignment.displayName] = Process-RoleAssignment $roleAssignment
         }
-        Write-Log "Processed role: $($roleDefinition.displayName) - Found assignments"
+        Write-Output "Processed role: $($roleDefinition.displayName) - Found assignments"
     }
     else {
-        Write-Log "Processed role: $($roleDefinition.displayName) - No assignments found" -Level Info
+        Write-Output "Processed role: $($roleDefinition.displayName) - No assignments found" -Level Info
     }
 
     return $roleEntry
@@ -99,6 +115,11 @@ function Format-GroupMembers($members) {
 
 # Process a single role assignment and its groups
 function Process-RoleAssignment($roleAssignment) {
+    if ([string]::IsNullOrEmpty($roleAssignment.id)) {
+        Write-Verbose "Skipping invalid role assignment (null or empty ID)"
+        return $assignmentEntry
+    }
+
     $assignmentEntry = @{
         Groups = @{}
     }
@@ -159,7 +180,7 @@ function New-ResultEntry($roleName, $assignmentName, $groupName, $members, $stat
 
 # Main Script
 try {
-    Write-Log "Starting Intune role assignment collection"
+    Write-Output "Starting Intune role assignment collection"
     
     # Get all role definitions from Intune with paging support
     $roleDefinitions = @()
@@ -184,18 +205,18 @@ try {
 
     # Convert to flat structure and export
     $results = Convert-ToFlatStructure $roleHierarchy
-    Write-Log "Found $($results.Count) total entries"
+    Write-Output "Found $($results.Count) total entries"
 
     if ($results.Count -gt 0) {
         $results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-        Write-Log "Results exported to $OutputPath"
+        Write-Output "Results exported to $OutputPath"
     }
     else {
-        Write-Log "No results to export" -Level Warning
+        Write-Output "No results to export" -Level Warning
     }
 }
 catch {
-    Write-Log "Script execution failed: $_" -Level Error
+    Write-Output "Script execution failed: $_" -Level Error
     throw
 }
 finally {
